@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vidéo du jour</title>
+<meta name="description" content="Lancer et récupérer la vidéo quotidienne depuis le téléphone, sans passer par l'application GitHub.">
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-touche-ios.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vidéo du jour">
+<meta name="theme-color" content="#7c3aed">
+</head>
+<body>
+
+<header class="entete">
+  <img src="icone-192.png" alt="">
+  <div class="titres">
+    <h1>Vidéo du jour</h1>
+    <p class="sous-titre" id="fil-ariane">Panneau de contrôle</p>
+  </div>
+  <button class="icone" id="bouton-reglages" title="Réglages" aria-label="Réglages">⚙️</button>
+</header>
+
+<main>
+
+  <!-- ============================== LANCER ============================== -->
+  <section class="ecran" id="ecran-lancer">
+
+    <div class="carte">
+      <h2>Suivi</h2>
+      <div id="suivi-vide" class="pile">
+        <p class="detail">Aucun run suivi pour l'instant.</p>
+      </div>
+      <div id="suivi-actif" class="masque pile">
+        <div class="ligne espace">
+          <span class="pastille" id="suivi-pastille"><span class="point"></span><span id="suivi-texte">—</span></span>
+          <span class="detail" id="suivi-duree"></span>
+        </div>
+        <p class="detail" id="suivi-detail"></p>
+        <a id="suivi-lien-github" href="#" target="_blank" rel="noopener" class="detail">Voir les journaux complets sur GitHub ↗</a>
+      </div>
+    </div>
+
+    <div class="carte">
+      <h2>Produire</h2>
+      <div class="pile">
+        <button class="primaire" id="bouton-lancer-production">▶ Produire la vidéo</button>
+        <button id="bouton-lancer-essai">Lancer un essai (bac à sable)</button>
+        <label class="case">
+          <input type="checkbox" id="case-forcer">
+          Forcer — refaire même si la vidéo du jour existe déjà
+        </label>
+      </div>
+      <p class="detail">Compte environ 5 à 7 minutes. Tu peux fermer le navigateur : le run continue sur GitHub.</p>
+      <div id="lancer-avis"></div>
+    </div>
+
+  </section>
+
+  <!-- ============================= RÉSULTAT ============================= -->
+  <section class="ecran" id="ecran-resultat">
+
+    <div class="carte">
+      <div class="ligne espace">
+        <h2>Dernier résultat</h2>
+        <button class="petit" id="bouton-rafraichir-resultat">↻ Rafraîchir</button>
+      </div>
+      <div id="resultat-contenu"><p class="detail">Chargement…</p></div>
+    </div>
+
+  </section>
+
+  <!-- ============================== ÉDITER ================================ -->
+  <section class="ecran" id="ecran-editer">
+
+    <div class="entete-sous-onglets">
+      <button class="actif" id="sous-onglet-theme" data-fichier="theme.yaml">theme.yaml</button>
+      <button id="sous-onglet-config" data-fichier="config.yaml">config.yaml</button>
+    </div>
+
+    <div class="carte">
+      <p class="detail" id="editeur-etat">Chargement…</p>
+      <textarea class="editeur" id="editeur-texte" spellcheck="false" disabled></textarea>
+      <div class="pile" style="margin-top:12px">
+        <button class="primaire" id="bouton-enregistrer">Enregistrer sur GitHub</button>
+        <p class="detail">Une édition ne prend effet qu'au prochain lancement. Un thème inédit remplit lui-même sa banque de secours au premier lancement.</p>
+      </div>
+      <div id="editeur-avis"></div>
+    </div>
+
+  </section>
+
+  <!-- ============================= RÉGLAGES =============================== -->
+  <section class="ecran" id="ecran-reglages">
+
+    <div class="carte">
+      <h2>Jeton d'accès (PAT)</h2>
+      <p class="detail">
+        Un jeton <b>fine-grained</b>, restreint au seul dépôt <code class="mono">Tiktok_Auto</code>,
+        avec les permissions <code class="mono">Actions</code> et <code class="mono">Contents</code> en lecture/écriture.
+        Il reste uniquement dans ce navigateur — jamais envoyé ailleurs qu'à GitHub.
+      </p>
+      <div class="pile" style="margin-top:10px">
+        <input type="password" id="champ-pat" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="ligne">
+          <button class="primaire" id="bouton-enregistrer-pat">Enregistrer</button>
+          <button id="bouton-tester-pat">Tester</button>
+        </div>
+        <button class="discret" id="bouton-deconnecter">Effacer le jeton de cet appareil</button>
+      </div>
+      <div id="reglages-avis"></div>
+    </div>
+
+    <div class="carte">
+      <details class="details-repli">
+        <summary>Comment créer ce jeton (une seule fois)</summary>
+        <ol style="font-size:13px; color:var(--texte-att); padding-left:18px; line-height:1.7">
+          <li>github.com → photo de profil → <b>Settings</b></li>
+          <li><b>Developer settings</b> (tout en bas) → <b>Personal access tokens</b> → <b>Fine-grained tokens</b></li>
+          <li><b>Generate new token</b></li>
+          <li><i>Resource owner</i> : ton compte</li>
+          <li><i>Repository access</i> : <b>Only select repositories</b> → <code class="mono">Tiktok_Auto</code></li>
+          <li><i>Permissions</i> → <i>Repository permissions</i> :<br>
+              <b>Actions</b> : Read and write<br>
+              <b>Contents</b> : Read and write</li>
+          <li><i>Expiration</i> : 90 jours, par exemple — GitHub te rappellera de le renouveler</li>
+          <li><b>Generate token</b>, puis copie-le ici. Il ne sera plus jamais réaffiché par GitHub.</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="carte">
+      <h2>À propos</h2>
+      <p class="detail">
+        Cette page est un simple fichier statique, hébergé publiquement par GitHub Pages —
+        elle ne contient aucun secret. Elle parle en direct à l'API GitHub avec le jeton que tu
+        as collé ci-dessus, qui reste dans le stockage local de ce navigateur.
+      </p>
+      <p class="detail">Dépôt du panneau : <code class="mono">ihsankrpz/video-du-jour</code><br>
+      Dépôt piloté : <code class="mono">ihsankrpz/Tiktok_Auto</code> (privé)</p>
+    </div>
+
+  </section>
+
+</main>
+
+<nav class="bas">
+  <button class="actif" data-ecran="lancer"><span class="pictogramme">🚀</span>Lancer</button>
+  <button data-ecran="resultat" id="onglet-resultat"><span class="pictogramme">🎬</span>Résultat</button>
+  <button data-ecran="editer"><span class="pictogramme">✏️</span>Éditer</button>
+  <button data-ecran="reglages"><span class="pictogramme">⚙️</span>Réglages</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
