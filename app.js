@@ -1394,10 +1394,15 @@ function construireFicheResultat(resultat) {
     carte.appendChild(img);
   }
 
-  const textes = [["Légende", resultat.legende], ["Hashtags", resultat.hashtags],
-                  ["Crédits", resultat.credits]];
+  // Les vidéos produites AVANT que l'historique existe n'ont pas de textes
+  // séparés : on retombe alors sur le corps de leur Release, qui porte déjà la
+  // légende et les crédits — mais pas les hashtags, qui n'y figurent pas.
+  const separes = [["Légende", resultat.legende], ["Hashtags", resultat.hashtags],
+                   ["Crédits", resultat.credits]].filter(([, v]) => v);
+  const textes = separes.length
+    ? separes
+    : (resultat.corps ? [["Compte rendu de la Release", resultat.corps]] : []);
   textes.forEach(([etiquette, contenu], rang) => {
-    if (!contenu) return;
     const bloc = document.createElement("details");
     bloc.className = "details-repli";
     const resume = document.createElement("summary");
