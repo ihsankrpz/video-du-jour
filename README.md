@@ -57,14 +57,16 @@ un flash blanc à l'ouverture.
   quand un résultat frais attend.
 - **Éditer** — un **formulaire**, pas des fichiers : interrupteurs, listes
   déroulantes et champs texte pour ce qui se règle au quotidien (voix off,
-  musique, durée visée, angles, hashtags, voix…). Chaque réglage porte une
-  explication de ce qu'il change. Un onglet **Avancé** garde le fichier brut
-  pour ce que le formulaire n'expose pas.
+  musique, source des images, banque distante, durée visée, angles, hashtags,
+  voix…). Chaque réglage porte une explication de ce qu'il change. Un onglet
+  **Avancé** garde le fichier brut pour ce que le formulaire n'expose pas —
+  dont les NOMS des bacs Supabase, volontairement laissés là : les changer
+  depuis le téléphone rendrait orphelins tous les clips déjà déposés.
 
   L'enregistrement fait des remplacements **chirurgicaux** : seule la valeur
   change, jamais la ligne entière. Les commentaires de `config.yaml` — qui sont
   la documentation du projet — survivent intacts, y compris ceux en fin de
-  ligne. C'est vérifié par un test qui rejoue les 18 champs contre les vrais
+  ligne. C'est vérifié par un test qui rejoue les 22 champs contre les vrais
   fichiers et contrôle qu'aucun autre champ ni commentaire ne bouge.
 - **Réglages** — gérer le jeton, tester la connexion, l'effacer de l'appareil.
 
