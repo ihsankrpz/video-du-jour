@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vidéo du jour</title>
 <meta name="description" content="Lancer et récupérer la vidéo quotidienne depuis le téléphone, sans passer par l'application GitHub.">
+<!-- Le thème est posé AVANT la feuille de style pour éviter le flash blanc
+     d'une page qui s'ouvre en clair puis bascule en sombre. -->
+<script>
+  try {
+    var t = localStorage.getItem("vdj_theme");
+    if (t === "clair" || t === "sombre") document.documentElement.dataset.theme = t;
+  } catch (e) { /* stockage bloqué : on reste en automatique */ }
+</script>
 <link rel="stylesheet" href="style.css">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icone-192.png">
@@ -12,7 +20,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Vidéo du jour">
-<meta name="theme-color" content="#7c3aed">
+<meta name="theme-color" content="#6d28d9">
 </head>
 <body>
 
@@ -22,6 +30,7 @@
     <h1>Vidéo du jour</h1>
     <p class="sous-titre" id="fil-ariane">Panneau de contrôle</p>
   </div>
+  <button class="icone" id="bouton-theme" title="Thème jour / nuit" aria-label="Thème jour ou nuit">🌗</button>
   <button class="icone" id="bouton-reglages" title="Réglages" aria-label="Réglages">⚙️</button>
 </header>
 
@@ -63,7 +72,6 @@
 
   <!-- ============================= RÉSULTAT ============================= -->
   <section class="ecran" id="ecran-resultat">
-
     <div class="carte">
       <div class="ligne espace">
         <h2>Dernier résultat</h2>
@@ -71,31 +79,66 @@
       </div>
       <div id="resultat-contenu"><p class="detail">Chargement…</p></div>
     </div>
-
   </section>
 
-  <!-- ============================== ÉDITER ================================ -->
+  <!-- ============================== ÉDITER ============================== -->
   <section class="ecran" id="ecran-editer">
 
     <div class="entete-sous-onglets">
-      <button class="actif" id="sous-onglet-theme" data-fichier="theme.yaml">theme.yaml</button>
-      <button id="sous-onglet-config" data-fichier="config.yaml">config.yaml</button>
+      <button class="actif" data-volet="theme">Thème</button>
+      <button data-volet="reglages">Réglages</button>
+      <button data-volet="avance">Avancé</button>
     </div>
 
-    <div class="carte">
-      <p class="detail" id="editeur-etat">Chargement…</p>
-      <textarea class="editeur" id="editeur-texte" spellcheck="false" disabled></textarea>
-      <div class="pile" style="margin-top:12px">
-        <button class="primaire" id="bouton-enregistrer">Enregistrer sur GitHub</button>
-        <p class="detail">Une édition ne prend effet qu'au prochain lancement. Un thème inédit remplit lui-même sa banque de secours au premier lancement.</p>
+    <!-- Formulaire simplifié : rempli par app.js à partir du SCHEMA. -->
+    <div id="volet-formulaire">
+      <div class="carte">
+        <p class="detail" id="editeur-etat">Chargement…</p>
+        <div id="champs"></div>
       </div>
-      <div id="editeur-avis"></div>
+      <div class="barre-enregistrer">
+        <button class="primaire" id="bouton-enregistrer">Enregistrer</button>
+        <p class="detail" id="editeur-resume">Aucune modification.</p>
+        <div id="editeur-avis"></div>
+      </div>
+    </div>
+
+    <!-- Échappatoire : le fichier brut, pour ce que le formulaire n'expose pas. -->
+    <div id="volet-avance" class="masque">
+      <div class="carte">
+        <div class="entete-sous-onglets">
+          <button class="actif" data-brut="theme.yaml">theme.yaml</button>
+          <button data-brut="config.yaml">config.yaml</button>
+        </div>
+        <p class="detail" id="brut-etat">Chargement…</p>
+        <textarea class="brut" id="brut-texte" spellcheck="false" disabled></textarea>
+        <div class="pile" style="margin-top:12px">
+          <button class="primaire" id="bouton-enregistrer-brut">Enregistrer le fichier brut</button>
+          <p class="detail">À n'utiliser que pour ce que le formulaire n'expose pas. Une erreur de syntaxe YAML fera échouer le prochain lancement.</p>
+        </div>
+        <div id="brut-avis"></div>
+      </div>
     </div>
 
   </section>
 
-  <!-- ============================= RÉGLAGES =============================== -->
+  <!-- ============================= RÉGLAGES ============================= -->
   <section class="ecran" id="ecran-reglages">
+
+    <div class="carte">
+      <h2>Apparence</h2>
+      <div class="champ interrupteur" style="padding-top:4px">
+        <div class="contenu">
+          <label class="titre">Thème</label>
+          <p class="aide" id="theme-actuel">—</p>
+        </div>
+      </div>
+      <div class="entete-sous-onglets" style="margin-top:10px; margin-bottom:0">
+        <button data-theme-choix="auto">Auto</button>
+        <button data-theme-choix="clair">Clair</button>
+        <button data-theme-choix="sombre">Sombre</button>
+      </div>
+    </div>
 
     <div class="carte">
       <h2>Jeton d'accès (PAT)</h2>
@@ -118,17 +161,19 @@
     <div class="carte">
       <details class="details-repli">
         <summary>Comment créer ce jeton (une seule fois)</summary>
+        <p class="detail" style="margin-top:8px">
+          Lien direct :
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>
+          — dans un navigateur, l'application GitHub n'expose pas cette page.
+        </p>
         <ol style="font-size:13px; color:var(--texte-att); padding-left:18px; line-height:1.7">
-          <li>github.com → photo de profil → <b>Settings</b></li>
-          <li><b>Developer settings</b> (tout en bas) → <b>Personal access tokens</b> → <b>Fine-grained tokens</b></li>
-          <li><b>Generate new token</b></li>
-          <li><i>Resource owner</i> : ton compte</li>
+          <li><i>Token name</i> : ce que tu veux</li>
+          <li><i>Expiration</i> : 90 jours par exemple</li>
           <li><i>Repository access</i> : <b>Only select repositories</b> → <code class="mono">Tiktok_Auto</code></li>
           <li><i>Permissions</i> → <i>Repository permissions</i> :<br>
               <b>Actions</b> : Read and write<br>
               <b>Contents</b> : Read and write</li>
-          <li><i>Expiration</i> : 90 jours, par exemple — GitHub te rappellera de le renouveler</li>
-          <li><b>Generate token</b>, puis copie-le ici. Il ne sera plus jamais réaffiché par GitHub.</li>
+          <li><b>Generate token</b>, copie-le : GitHub ne le réaffichera jamais</li>
         </ol>
       </details>
     </div>
@@ -136,11 +181,11 @@
     <div class="carte">
       <h2>À propos</h2>
       <p class="detail">
-        Cette page est un simple fichier statique, hébergé publiquement par GitHub Pages —
-        elle ne contient aucun secret. Elle parle en direct à l'API GitHub avec le jeton que tu
-        as collé ci-dessus, qui reste dans le stockage local de ce navigateur.
+        Cette page est un fichier statique hébergé publiquement par GitHub Pages —
+        elle ne contient aucun secret. Elle parle en direct à l'API GitHub avec le jeton
+        collé ci-dessus, qui reste dans le stockage local de ce navigateur.
       </p>
-      <p class="detail">Dépôt du panneau : <code class="mono">ihsankrpz/video-du-jour</code><br>
+      <p class="detail">Panneau : <code class="mono">ihsankrpz/video-du-jour</code><br>
       Dépôt piloté : <code class="mono">ihsankrpz/Tiktok_Auto</code> (privé)</p>
     </div>
 

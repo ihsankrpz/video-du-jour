@@ -39,6 +39,13 @@ d'adresse.
 
 Ces étapes sont aussi rappelées directement dans l'écran Réglages de la page.
 
+## Thème jour / nuit
+
+Trois états, via l'icône en haut à droite ou l'écran Réglages : **Auto** (suit
+le réglage du téléphone), **Clair** (blanc) ou **Sombre** (noir). Le choix est
+retenu sur l'appareil, et appliqué avant même le rendu de la page pour éviter
+un flash blanc à l'ouverture.
+
 ## Utilisation
 
 - **Lancer** — Produire la vidéo (`production`) ou lancer un Essai
@@ -48,9 +55,17 @@ Ces étapes sont aussi rappelées directement dans l'écran Réglages de la page
   séparés à coller en premier commentaire, et un bouton qui enregistre le
   `.mp4` directement dans le téléphone. Une pastille apparaît sur cet onglet
   quand un résultat frais attend.
-- **Éditer** — `theme.yaml` et `config.yaml`, en clair, avec Enregistrer qui
-  commite directement sur `main`. Un thème inédit remplit lui-même sa banque
-  de secours au lancement suivant (`secours_auto`).
+- **Éditer** — un **formulaire**, pas des fichiers : interrupteurs, listes
+  déroulantes et champs texte pour ce qui se règle au quotidien (voix off,
+  musique, durée visée, angles, hashtags, voix…). Chaque réglage porte une
+  explication de ce qu'il change. Un onglet **Avancé** garde le fichier brut
+  pour ce que le formulaire n'expose pas.
+
+  L'enregistrement fait des remplacements **chirurgicaux** : seule la valeur
+  change, jamais la ligne entière. Les commentaires de `config.yaml` — qui sont
+  la documentation du projet — survivent intacts, y compris ceux en fin de
+  ligne. C'est vérifié par un test qui rejoue les 18 champs contre les vrais
+  fichiers et contrôle qu'aucun autre champ ni commentaire ne bouge.
 - **Réglages** — gérer le jeton, tester la connexion, l'effacer de l'appareil.
 
 ## Pourquoi une branche `dernier-resultat`, et pas la Release ?
@@ -87,7 +102,7 @@ page ; la Release reste l'archive consultable sur github.com.
 
 ```
 index.html    la page (structure)
-style.css     apparence, thème clair/sombre automatique
+style.css     apparence, thème clair / sombre / automatique
 app.js        toute la logique — commentée, sans dépendance externe
 manifest.json pour « Ajouter à l'écran d'accueil »
 icone-*.png   icône de l'app
