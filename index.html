@@ -72,13 +72,92 @@
 
   <!-- ============================= RÉSULTAT ============================= -->
   <section class="ecran" id="ecran-resultat">
+
+    <div class="entete-sous-onglets">
+      <button class="actif" data-volet-resultat="dernier">Dernier</button>
+      <button data-volet-resultat="anciens">Anciens</button>
+    </div>
+
+    <div id="volet-resultat-dernier">
+      <div class="carte">
+        <div class="ligne espace">
+          <h2>Dernier résultat</h2>
+          <button class="petit" id="bouton-rafraichir-resultat">↻ Rafraîchir</button>
+        </div>
+        <div id="resultat-contenu"><p class="detail">Chargement…</p></div>
+      </div>
+    </div>
+
+    <!-- Les vidéos encore téléchargeables. La liste vient de l'historique
+         publié par le runner : sa colonne vertébrale est la liste RÉELLE des
+         Releases, donc une vidéo élaguée en disparaît au lieu d'offrir un
+         lien mort. -->
+    <div id="volet-resultat-anciens" class="masque">
+      <div class="carte">
+        <div class="ligne espace">
+          <h2>Vidéos gardées</h2>
+          <button class="petit" id="bouton-rafraichir-anciens">↻ Rafraîchir</button>
+        </div>
+        <p class="detail" id="anciens-etat">Chargement…</p>
+      </div>
+      <div id="anciens-liste"></div>
+    </div>
+
+  </section>
+
+  <!-- ============================== BANQUE ============================== -->
+  <!-- Le panneau ne détient AUCUNE clé Supabase. Il LIT un catalogue publié par
+       le runner, dans lequel chaque média porte une URL signée — donc
+       pré-authentifiée, suivie sans en-tête ni secret. Toute MODIFICATION passe
+       par le workflow « Maintenance » : c'est le runner qui agit. -->
+  <section class="ecran" id="ecran-banque">
+
+    <div class="entete-sous-onglets">
+      <button class="actif" data-bac="videos">Vidéos</button>
+      <button data-bac="images">Images</button>
+      <button data-bac="musique">Musique</button>
+    </div>
+
     <div class="carte">
       <div class="ligne espace">
-        <h2>Dernier résultat</h2>
-        <button class="petit" id="bouton-rafraichir-resultat">↻ Rafraîchir</button>
+        <h2 id="banque-titre">Banque</h2>
+        <button class="petit" id="bouton-rafraichir-banque">↻ Rafraîchir</button>
       </div>
-      <div id="resultat-contenu"><p class="detail">Chargement…</p></div>
+      <p class="detail" id="banque-etat">Chargement…</p>
+      <div class="ligne" style="margin-top:10px">
+        <button class="primaire" id="bouton-ouvrir-ajout">+ Ajouter un média</button>
+        <button id="bouton-recatalogue">Recalculer le catalogue</button>
+      </div>
+      <div id="banque-avis"></div>
     </div>
+
+    <!-- Formulaire d'ajout, replié par défaut : il ne sert qu'occasionnellement
+         et occuperait tout l'écran d'un téléphone. -->
+    <div class="carte masque" id="carte-ajout">
+      <h2>Ajouter un média</h2>
+      <p class="detail">
+        Le fichier passe par le dépôt, puis le runner le transfère vers Supabase
+        et vide le sas. <b>La licence est obligatoire</b> : sans elle, rien n'est
+        déposé — un média sans licence complète ne serait jamais utilisé.
+      </p>
+      <div class="pile" style="margin-top:10px">
+        <input type="file" id="ajout-fichier" accept="video/*,image/*,audio/*">
+        <input type="text" id="ajout-theme" placeholder="Thème de rangement (ex. histoires_secrets_faits)">
+        <input type="text" id="ajout-titre" placeholder="Titre (ce que montre le média)">
+        <input type="text" id="ajout-auteur" placeholder="Auteur">
+        <input type="text" id="ajout-source" placeholder="Source (URL d'origine)">
+        <input type="text" id="ajout-licence" placeholder="Licence (ex. Pexels License, CC0)">
+        <input type="text" id="ajout-mots" placeholder="Mots-clés, séparés par des virgules">
+        <div class="ligne">
+          <button class="primaire" id="bouton-envoyer-ajout">Envoyer</button>
+          <button class="discret" id="bouton-annuler-ajout">Annuler</button>
+        </div>
+      </div>
+      <div id="ajout-avis"></div>
+    </div>
+
+    <div id="banque-liste"></div>
+
   </section>
 
   <!-- ============================== ÉDITER ============================== -->
@@ -179,6 +258,20 @@
     </div>
 
     <div class="carte">
+      <h2>Stockage GitHub</h2>
+      <p class="detail">
+        Chaque vidéo produite laisse une Release de 40 à 75 Mo, qui ne disparaît
+        jamais d'elle-même, et deux artefacts. La purge garde les Releases les
+        plus récentes — leur nombre se règle dans <b>Éditer → Réglages</b> — et
+        retire les artefacts trop vieux. Elle tourne déjà à la fin de chaque
+        production ; ce bouton sert à la déclencher tout de suite.
+      </p>
+      <p class="detail" id="stockage-etat" style="margin-top:8px">—</p>
+      <button id="bouton-purger" style="margin-top:10px">Purger maintenant</button>
+      <div id="purge-avis"></div>
+    </div>
+
+    <div class="carte">
       <h2>À propos</h2>
       <p class="detail">
         Cette page est un fichier statique hébergé publiquement par GitHub Pages —
@@ -196,10 +289,11 @@
 <nav class="bas">
   <button class="actif" data-ecran="lancer"><span class="pictogramme">🚀</span>Lancer</button>
   <button data-ecran="resultat" id="onglet-resultat"><span class="pictogramme">🎬</span>Résultat</button>
+  <button data-ecran="banque"><span class="pictogramme">🗂️</span>Banque</button>
   <button data-ecran="editer"><span class="pictogramme">✏️</span>Éditer</button>
   <button data-ecran="reglages"><span class="pictogramme">⚙️</span>Réglages</button>
 </nav>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

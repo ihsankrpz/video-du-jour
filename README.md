@@ -68,7 +68,42 @@ un flash blanc à l'ouverture.
   la documentation du projet — survivent intacts, y compris ceux en fin de
   ligne. C'est vérifié par un test qui rejoue les 22 champs contre les vrais
   fichiers et contrôle qu'aucun autre champ ni commentaire ne bouge.
-- **Réglages** — gérer le jeton, tester la connexion, l'effacer de l'appareil.
+- **Banque** — les trois bacs de la banque distante Supabase : chaque clip avec
+  son aperçu jouable, son auteur, sa licence et son poids. Suppression à
+  l'unité, ajout depuis la galerie du téléphone. Un média présent sans entrée
+  d'index est signalé : il occupe le quota sans pouvoir jamais servir.
+- **Réglages** — gérer le jeton, tester la connexion, l'effacer de l'appareil,
+  et purger le stockage GitHub.
+
+  Le volet **Anciens** de l'onglet Résultat liste les vidéos encore
+  téléchargeables, avec légende, hashtags et crédits séparés et copiables. Sa
+  colonne vertébrale est l'état RÉEL des Releases : une vidéo élaguée en
+  disparaît, au lieu d'offrir un lien mort.
+
+## Pourquoi cette page ne détient aucune clé Supabase
+
+Elle pourrait parler à Supabase directement : l'API Storage est parfaitement
+utilisable depuis un navigateur — préflight `200`, `Access-Control-Allow-Origin: *`,
+en-têtes `apikey` et `authorization` autorisés, vérifié. Mais la seule clé dont
+le projet dispose contourne **toutes** les règles de sécurité de la base, et une
+page publique n'est pas un endroit pour ça.
+
+La séparation retenue :
+
+| | Comment | Délai |
+|---|---|---|
+| Consulter la banque | catalogue publié par le runner, avec des **URLs signées** | immédiat |
+| Ajouter / supprimer | workflow `maintenance.yml` : le runner agit | ~40 s |
+
+Une URL signée est pré-authentifiée : la page la suit sans le moindre en-tête,
+donc sans préflight, et sans jamais détenir de secret. Elle honore les requêtes
+Range, ce qui permet à une balise `<video>` d'y naviguer. Le runner les refait à
+chaque production ; elles valent 30 jours.
+
+Pour l'ajout, le fichier transite par une branche-sas `depot-banque` — les
+entrées d'un `workflow_dispatch` sont des chaînes plafonnées, un média en base64
+les ferait éclater. Le runner récupère le fichier puis **remplace la branche par
+un commit orphelin vide** : rien n'y séjourne.
 
 ## Pourquoi une branche `dernier-resultat`, et pas la Release ?
 

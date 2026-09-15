@@ -261,3 +261,58 @@ code.mono {
   background: var(--carte); border: 1px solid var(--bordure); border-radius: 14px;
   padding: 12px; margin-top: 14px; box-shadow: var(--ombre);
 }
+
+
+/* ---------------------------------------------------------------------------
+   Banque distante et anciens résultats.
+   Les médias sont servis par des URLs signées : ni <video> ni <img> ne peut
+   supposer un format, une orientation ou un poids. Tout est donc borné en
+   hauteur et contenu par object-fit, pour qu'un clip vertical de 1080×1920
+   ne pousse pas la fiche sur trois écrans.
+--------------------------------------------------------------------------- */
+.fiche-media video,
+.fiche-media img {
+  width: 100%; max-height: 260px; border-radius: 10px;
+  background: var(--fond-doux); object-fit: contain; display: block;
+}
+.fiche-media audio { width: 100%; margin-bottom: 4px; }
+.fiche-media > * + * { margin-top: 8px; }
+
+.fiche-titre { font-size: 15px; font-weight: 600; color: var(--texte); margin: 0; }
+
+.miniature {
+  width: 100%; max-height: 200px; object-fit: contain;
+  border-radius: 10px; background: var(--fond-doux); margin-top: 8px;
+}
+
+.etiquette {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--fond-doux); color: var(--texte-att); white-space: nowrap;
+}
+.etiquette.orange { color: var(--orange); }
+
+.alerte-inline { color: var(--orange); }
+
+/* Le texte à recopier dans TikTok : il doit se replier, jamais imposer un
+   défilement horizontal à la page. */
+.texte-copiable {
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0;
+  background: var(--fond-doux); border-radius: 10px; padding: 10px;
+  font-size: 13px; line-height: 1.5; color: var(--texte);
+  font-family: inherit;
+}
+
+/* Un lien qui doit avoir l'air d'un bouton : le téléchargement d'une Release
+   passe par une NAVIGATION, jamais par fetch(), donc c'est un <a>. */
+.bouton-lien {
+  display: block; text-align: center; margin-top: 10px; padding: 11px 14px;
+  border-radius: 10px; background: var(--accent); color: var(--accent-texte);
+  font-size: 14px; font-weight: 600; text-decoration: none;
+}
+
+/* Cinq onglets au lieu de quatre : les libellés doivent tenir sans se couper
+   sur les écrans les plus étroits. */
+@media (max-width: 360px) {
+  nav.bas button { font-size: 10px; padding-left: 2px; padding-right: 2px; }
+  nav.bas button .pictogramme { font-size: 18px; }
+}

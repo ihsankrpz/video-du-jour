@@ -27,7 +27,19 @@
 const OWNER = "ihsankrpz";
 const REPO = "Tiktok_Auto";
 const WORKFLOW_FILE = "video.yml";
+const WORKFLOW_MAINTENANCE = "maintenance.yml";
 const BRANCHE_RESULTAT = "dernier-resultat";
+// Publiée par le runner : catalogue de la banque distante (URLs signées, donc
+// consultable sans aucune clé) et historique des vidéos encore téléchargeables.
+const BRANCHE_DONNEES = "donnees-panneau";
+// Sas de transit pour un média ajouté depuis le téléphone. Le runner le vide
+// une fois le fichier chez Supabase : rien n'y séjourne.
+const BRANCHE_DEPOT = "depot-banque";
+// Au-delà, l'API Contents refuse le dépôt. La limite documentée est de 100 Mo,
+// mais le corps JSON transporte du base64 — un tiers de plus que le fichier —,
+// donc on s'arrête franchement en dessous plutôt que de faire téléverser
+// quarante mégaoctets pour un refus.
+const LIMITE_DEPOT_OCTETS = 40 * 1024 * 1024;
 const API_BASE = "https://api.github.com";
 
 const CLE_PAT = "vdj_pat";
@@ -36,7 +48,8 @@ const CLE_THEME = "vdj_theme";
 
 const LIBELLES_ECRAN = {
   lancer: "Panneau de contrôle",
-  resultat: "Dernier résultat",
+  resultat: "Résultats",
+  banque: "Banque distante",
   editer: "Éditer",
   reglages: "Réglages",
 };
@@ -1015,6 +1028,484 @@ function changerEcran(nom) {
   document.getElementById("fil-ariane").textContent = LIBELLES_ECRAN[nom] || "";
   if (nom === "resultat") chargerResultat();
   if (nom === "editer") choisirVolet(editeur.voletActuel);
+  if (nom === "banque") chargerBanque();
+  if (nom === "reglages") chargerEtatStockage();
+}
+
+// --------------------------------------------------------------------------
+// Données publiées par le runner (branche `donnees-panneau`)
+// --------------------------------------------------------------------------
+// On passe par `download_url` et non par le champ `content` : au-delà d'un Mo,
+// l'API Contents renvoie `content: ""` avec `encoding: "none"`, et le catalogue
+// est fait pour grossir. `download_url` porte un jeton signé DANS l'URL, donc
+// fetch() l'appelle sans aucun en-tête — sans préflight, la seule chose qui
+// casse sur ce chemin.
+async function lireJsonBranche(branche, nom) {
+  const r = await ghApi(`/repos/${OWNER}/${REPO}/contents/${nom}?ref=${branche}`);
+  const d = await r.json();
+  if (!d.download_url) throw new Error(`Pas d'URL de téléchargement pour ${nom}.`);
+  const contenu = await fetch(d.download_url);
+  if (!contenu.ok) throw new Error(`${nom} : HTTP ${contenu.status}`);
+  return contenu.json();
+}
+
+function formaterOctets(octets) {
+  if (!octets) return "—";
+  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`;
+  return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+// --------------------------------------------------------------------------
+// Workflow « Maintenance » : toute MODIFICATION de la banque passe par lui
+// --------------------------------------------------------------------------
+// Le panneau ne détient aucune clé Supabase, et c'est délibéré : la seule dont
+// nous disposions contourne toutes les règles de sécurité du projet. Le runner,
+// lui, l'a déjà par les secrets du dépôt. Le panneau demande, le runner agit.
+async function dispatcherMaintenance(entrees) {
+  const r0 = await ghApi(`/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW_MAINTENANCE}/runs?per_page=1`);
+  const d0 = await r0.json();
+  const avant = (d0.workflow_runs[0] && d0.workflow_runs[0].id) || 0;
+
+  await ghApi(`/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW_MAINTENANCE}/dispatches`, {
+    method: "POST",
+    body: JSON.stringify({ ref: "main", inputs: entrees }),
+  });
+  // Même piège que pour la production : `dispatches` répond 204 sans identifiant.
+  // On guette un run dont l'id dépasse celui relevé juste avant.
+  for (let essai = 0; essai < 20; essai++) {
+    await attendre(3000);
+    const r = await ghApi(`/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW_MAINTENANCE}/runs?per_page=5`);
+    const d = await r.json();
+    const nouveau = d.workflow_runs.find((x) => x.id > avant);
+    if (nouveau) return nouveau.id;
+  }
+  throw new Error("Le run de maintenance n'est pas apparu — vérifie l'onglet Actions.");
+}
+
+async function attendreRun(id, surAvancement) {
+  for (let essai = 0; essai < 100; essai++) {
+    const r = await ghApi(`/repos/${OWNER}/${REPO}/actions/runs/${id}`);
+    const run = await r.json();
+    if (run.status === "completed") return run.conclusion;
+    if (surAvancement) surAvancement(run.status);
+    await attendre(4000);
+  }
+  throw new Error("Le run de maintenance dure anormalement longtemps.");
+}
+
+// --------------------------------------------------------------------------
+// Écran BANQUE
+// --------------------------------------------------------------------------
+const banque = { catalogue: null, bacActuel: "videos" };
+
+function choisirBac(bac) {
+  banque.bacActuel = bac;
+  document.querySelectorAll("[data-bac]").forEach((b) => b.classList.toggle("actif", b.dataset.bac === bac));
+  afficherBac();
+}
+
+function construireFicheMedia(entree, bac) {
+  const carte = document.createElement("div");
+  carte.className = "carte fiche-media";
+
+  // L'aperçu n'est proposé QUE si le runner a pu signer l'URL. Une balise
+  // <video> sans source afficherait un cadre noir muet, qu'on prendrait pour
+  // un média corrompu plutôt que pour une signature expirée.
+  if (entree.url && bac === "videos") {
+    const video = document.createElement("video");
+    video.src = entree.url;
+    video.controls = true;
+    video.preload = "none";
+    video.playsInline = true;
+    carte.appendChild(video);
+  } else if (entree.url && bac === "images") {
+    const img = document.createElement("img");
+    img.src = entree.url;
+    img.alt = entree.titre || entree.fichier;
+    img.loading = "lazy";
+    carte.appendChild(img);
+  } else if (entree.url && bac === "musique") {
+    const audio = document.createElement("audio");
+    audio.src = entree.url;
+    audio.controls = true;
+    audio.preload = "none";
+    carte.appendChild(audio);
+  }
+
+  const titre = document.createElement("p");
+  titre.className = "fiche-titre";
+  titre.textContent = entree.titre || entree.fichier;
+  carte.appendChild(titre);
+
+  const meta = document.createElement("p");
+  meta.className = "detail";
+  const morceaux = [entree.theme, entree.auteur, entree.type_licence, formaterOctets(entree.octets)]
+    .filter((x) => x);
+  meta.textContent = morceaux.join(" · ");
+  carte.appendChild(meta);
+
+  if (!entree.indexe) {
+    const alerte = document.createElement("p");
+    alerte.className = "detail alerte-inline";
+    alerte.textContent = "Sans entrée d'index : ce média occupe de la place mais "
+      + "ne sera jamais utilisé par une production.";
+    carte.appendChild(alerte);
+  }
+
+  if ((entree.mots_cles || []).length) {
+    const mots = document.createElement("p");
+    mots.className = "detail";
+    mots.textContent = "Mots-clés : " + entree.mots_cles.join(", ");
+    carte.appendChild(mots);
+  }
+
+  const barre = document.createElement("div");
+  barre.className = "ligne";
+  const bouton = document.createElement("button");
+  bouton.className = "discret";
+  bouton.textContent = "Supprimer";
+  bouton.addEventListener("click", () => supprimerMedia(bac, entree, bouton));
+  barre.appendChild(bouton);
+  if (entree.source) {
+    const lien = document.createElement("a");
+    lien.href = entree.source;
+    lien.target = "_blank";
+    lien.rel = "noopener";
+    lien.className = "detail";
+    lien.textContent = "Source ↗";
+    barre.appendChild(lien);
+  }
+  carte.appendChild(barre);
+  return carte;
+}
+
+function afficherBac() {
+  const liste = document.getElementById("banque-liste");
+  const etat = document.getElementById("banque-etat");
+  liste.innerHTML = "";
+  if (!banque.catalogue) { etat.textContent = "Catalogue non chargé."; return; }
+  if (!banque.catalogue.actif) {
+    etat.textContent = "Banque distante inactive : active-la dans Éditer → Réglages, "
+      + "puis relance une production ou « Recalculer le catalogue ».";
+    return;
+  }
+  const bac = banque.catalogue.bacs[banque.bacActuel];
+  if (!bac) { etat.textContent = "Ce bac n'apparaît pas au catalogue."; return; }
+
+  const genere = (banque.catalogue.genere_le || "").replace("T", " ").slice(0, 16);
+  etat.textContent = `${bac.objets} média(s), ${formaterOctets(bac.octets)} — catalogue du ${genere}.`
+    + (bac.entrees_orphelines.length
+      ? ` ${bac.entrees_orphelines.length} entrée(s) d'index sans fichier.`
+      : "");
+  document.getElementById("banque-titre").textContent = `Banque — ${bac.nom}`;
+
+  if (!bac.entrees.length) {
+    liste.innerHTML = '<div class="carte"><p class="detail">Ce bac est vide.</p></div>';
+    return;
+  }
+  bac.entrees.forEach((e) => liste.appendChild(construireFicheMedia(e, banque.bacActuel)));
+}
+
+async function chargerBanque() {
+  const etat = document.getElementById("banque-etat");
+  etat.textContent = "Chargement…";
+  document.getElementById("banque-liste").innerHTML = "";
+  try {
+    banque.catalogue = await lireJsonBranche(BRANCHE_DONNEES, "catalogue.json");
+    afficherBac();
+  } catch (e) {
+    banque.catalogue = null;
+    etat.textContent = e.status === 404
+      ? "Aucun catalogue publié pour l'instant. Lance « Recalculer le catalogue »."
+      : explicationErreur(e);
+  }
+}
+
+async function supprimerMedia(bac, entree, bouton) {
+  const nom = entree.titre || entree.fichier;
+  if (!window.confirm(`Supprimer « ${nom} » de la banque ?\n\nLe fichier et son entrée `
+      + `d'index partent ensemble, définitivement.`)) return;
+  bouton.disabled = true;
+  const avis = document.getElementById("banque-avis");
+  afficherAvis(avis, "info", "Demande envoyée au runner…");
+  try {
+    const id = await dispatcherMaintenance({
+      action: "supprimer", bac, chemin: entree.chemin,
+    });
+    afficherAvis(avis, "info", "Suppression en cours sur le runner…");
+    const verdict = await attendreRun(id);
+    if (verdict !== "success") throw new Error(`Le run s'est terminé en « ${verdict} ».`);
+    afficherAvis(avis, "ok", `« ${nom} » supprimé.`);
+    await chargerBanque();
+  } catch (e) {
+    afficherAvis(avis, "erreur", explicationErreur(e));
+    bouton.disabled = false;
+  }
+}
+
+async function recalculerCatalogue() {
+  const avis = document.getElementById("banque-avis");
+  afficherAvis(avis, "info", "Recalcul demandé au runner…");
+  try {
+    const id = await dispatcherMaintenance({ action: "catalogue" });
+    const verdict = await attendreRun(id);
+    if (verdict !== "success") throw new Error(`Le run s'est terminé en « ${verdict} ».`);
+    afficherAvis(avis, "ok", "Catalogue republié.");
+    await chargerBanque();
+  } catch (e) {
+    afficherAvis(avis, "erreur", explicationErreur(e));
+  }
+}
+
+// --------------------------------------------------------------------------
+// Ajout d'un média
+// --------------------------------------------------------------------------
+// Un `workflow_dispatch` ne transporte que des chaînes, plafonnées : un média
+// en base64 les ferait éclater. Le fichier transite donc par une branche-sas du
+// dépôt, que le runner vide une fois le transfert fait chez Supabase.
+function lireFichierBase64(fichier) {
+  return new Promise((resoudre, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.onerror = () => rejeter(new Error("Lecture du fichier impossible."));
+    lecteur.onload = () => {
+      // `result` vaut « data:<type>;base64,<charge> » : on ne garde que la charge.
+      const brut = String(lecteur.result);
+      resoudre(brut.slice(brut.indexOf(",") + 1));
+    };
+    lecteur.readAsDataURL(fichier);
+  });
+}
+
+function nomSur(nom) {
+  const base = nom.split(/[\\/]/).pop().trim();
+  const propre = base.replace(/[^A-Za-z0-9._-]/g, "_");
+  return propre || "media";
+}
+
+async function envoyerAjout() {
+  const avis = document.getElementById("ajout-avis");
+  const champFichier = document.getElementById("ajout-fichier");
+  const fichier = champFichier.files && champFichier.files[0];
+  const valeur = (id) => document.getElementById(id).value.trim();
+
+  if (!fichier) { afficherAvis(avis, "erreur", "Choisis d'abord un fichier."); return; }
+  const licence = valeur("ajout-licence");
+  const auteur = valeur("ajout-auteur");
+  const source = valeur("ajout-source");
+  if (!licence || !auteur || !source) {
+    // Le runner refuserait de toute façon : mieux vaut le dire ici que de
+    // faire attendre quarante secondes pour un refus prévisible.
+    afficherAvis(avis, "erreur", "Auteur, source et licence sont obligatoires — "
+      + "un média sans licence complète ne serait jamais utilisé par une production.");
+    return;
+  }
+  if (fichier.size > LIMITE_DEPOT_OCTETS) {
+    afficherAvis(avis, "erreur", `Fichier de ${formaterOctets(fichier.size)} : au-dessus `
+      + `de la limite de ${formaterOctets(LIMITE_DEPOT_OCTETS)} que l'API GitHub accepte `
+      + `pour ce transit. Passe par une production, ou allège le média.`);
+    return;
+  }
+
+  const bouton = document.getElementById("bouton-envoyer-ajout");
+  bouton.disabled = true;
+  try {
+    afficherAvis(avis, "info", "Envoi du fichier…");
+    const nom = nomSur(fichier.name);
+    const base64 = await lireFichierBase64(fichier);
+
+    // Le sas peut déjà contenir un fichier de ce nom : l'API Contents exige
+    // alors le `sha` du précédent, sans quoi elle rend 422.
+    let sha;
+    try {
+      const existant = await ghApi(
+        `/repos/${OWNER}/${REPO}/contents/depot/${nom}?ref=${BRANCHE_DEPOT}`);
+      sha = (await existant.json()).sha;
+    } catch (e) {
+      if (e.status !== 404) throw e;
+    }
+    await ghApi(`/repos/${OWNER}/${REPO}/contents/depot/${nom}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        message: `Sas : ${nom}`, content: base64, branch: BRANCHE_DEPOT,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+
+    afficherAvis(avis, "info", "Fichier déposé. Le runner le transfère vers Supabase…");
+    const id = await dispatcherMaintenance({
+      action: "ajouter", bac: banque.bacActuel, chemin: nom,
+      theme: valeur("ajout-theme") || "divers",
+      titre: valeur("ajout-titre"), auteur, source, licence,
+      mots_cles: valeur("ajout-mots"),
+    });
+    const verdict = await attendreRun(id);
+    if (verdict !== "success") throw new Error(`Le run s'est terminé en « ${verdict} ».`);
+
+    afficherAvis(avis, "ok", `« ${nom} » ajouté à la banque.`);
+    ["ajout-titre", "ajout-auteur", "ajout-source", "ajout-licence", "ajout-mots"]
+      .forEach((id2) => { document.getElementById(id2).value = ""; });
+    champFichier.value = "";
+    document.getElementById("carte-ajout").classList.add("masque");
+    await chargerBanque();
+  } catch (e) {
+    afficherAvis(avis, "erreur", explicationErreur(e));
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Volet ANCIENS RÉSULTATS
+// --------------------------------------------------------------------------
+function construireFicheResultat(resultat) {
+  const carte = document.createElement("div");
+  carte.className = "carte";
+
+  const entete = document.createElement("div");
+  entete.className = "ligne espace";
+  const titre = document.createElement("p");
+  titre.className = "fiche-titre";
+  titre.textContent = resultat.titre || resultat.etiquette;
+  entete.appendChild(titre);
+  if (resultat.essai) {
+    const marque = document.createElement("span");
+    marque.className = "etiquette orange";
+    marque.textContent = "essai";
+    entete.appendChild(marque);
+  }
+  carte.appendChild(entete);
+
+  const meta = document.createElement("p");
+  meta.className = "detail";
+  meta.textContent = [(resultat.publie_le || "").slice(0, 10), formaterOctets(resultat.octets)]
+    .filter((x) => x).join(" · ");
+  carte.appendChild(meta);
+
+  if (resultat.miniature) {
+    const img = document.createElement("img");
+    img.className = "miniature";
+    img.loading = "lazy";
+    img.alt = "";
+    // La miniature vit sur la branche de données : même chemin signé que le
+    // reste, donc récupérable sans en-tête.
+    lireUrlBranche(BRANCHE_DONNEES, resultat.miniature)
+      .then((u) => { img.src = u; })
+      .catch(() => { img.remove(); });
+    carte.appendChild(img);
+  }
+
+  const textes = [["Légende", resultat.legende], ["Hashtags", resultat.hashtags],
+                  ["Crédits", resultat.credits]];
+  textes.forEach(([etiquette, contenu], rang) => {
+    if (!contenu) return;
+    const bloc = document.createElement("details");
+    bloc.className = "details-repli";
+    const resume = document.createElement("summary");
+    resume.textContent = etiquette;
+    bloc.appendChild(resume);
+    const zone = document.createElement("pre");
+    zone.className = "texte-copiable";
+    zone.textContent = contenu;
+    bloc.appendChild(zone);
+    const copier = document.createElement("button");
+    copier.className = "petit";
+    copier.id = `copier-${resultat.etiquette}-${rang}`;
+    copier.textContent = "Copier";
+    copier.addEventListener("click", () => copierPresse(contenu, copier.id));
+    bloc.appendChild(copier);
+    carte.appendChild(bloc);
+  });
+
+  if (resultat.url_video) {
+    // NAVIGATION, pas fetch() : l'asset d'une Release redirige vers un stockage
+    // Azure qui ne renvoie aucun en-tête CORS — une récupération par script
+    // échouerait sans indice. Un lien ouvre le téléchargement natif du
+    // téléphone, à condition d'être connecté à GitHub dans ce navigateur.
+    const lien = document.createElement("a");
+    lien.className = "bouton-lien";
+    lien.href = resultat.url_video;
+    lien.target = "_blank";
+    lien.rel = "noopener";
+    lien.textContent = "Télécharger la vidéo ↗";
+    carte.appendChild(lien);
+  }
+  return carte;
+}
+
+async function lireUrlBranche(branche, nom) {
+  const r = await ghApi(`/repos/${OWNER}/${REPO}/contents/${nom}?ref=${branche}`);
+  const d = await r.json();
+  if (!d.download_url) throw new Error(`Pas d'URL pour ${nom}.`);
+  return d.download_url;
+}
+
+async function chargerAnciens() {
+  const etat = document.getElementById("anciens-etat");
+  const liste = document.getElementById("anciens-liste");
+  etat.textContent = "Chargement…";
+  liste.innerHTML = "";
+  try {
+    const historique = await lireJsonBranche(BRANCHE_DONNEES, "historique.json");
+    const resultats = historique.resultats || [];
+    if (!resultats.length) {
+      etat.textContent = "Aucune vidéo gardée pour l'instant.";
+      return;
+    }
+    const poids = resultats.reduce((t, r) => t + (r.octets || 0), 0);
+    etat.textContent = `${resultats.length} vidéo(s) encore téléchargeable(s), `
+      + `${formaterOctets(poids)} au total sur GitHub.`;
+    resultats.forEach((r) => liste.appendChild(construireFicheResultat(r)));
+  } catch (e) {
+    etat.textContent = e.status === 404
+      ? "Aucun historique publié pour l'instant : il le sera à la prochaine production."
+      : explicationErreur(e);
+  }
+}
+
+function choisirVoletResultat(volet) {
+  document.querySelectorAll("[data-volet-resultat]").forEach((b) =>
+    b.classList.toggle("actif", b.dataset.voletResultat === volet));
+  document.getElementById("volet-resultat-dernier").classList.toggle("masque", volet !== "dernier");
+  document.getElementById("volet-resultat-anciens").classList.toggle("masque", volet !== "anciens");
+  if (volet === "anciens") chargerAnciens();
+  else chargerResultat();
+}
+
+// --------------------------------------------------------------------------
+// Purge du stockage GitHub
+// --------------------------------------------------------------------------
+async function chargerEtatStockage() {
+  const etat = document.getElementById("stockage-etat");
+  try {
+    const historique = await lireJsonBranche(BRANCHE_DONNEES, "historique.json");
+    const resultats = historique.resultats || [];
+    const poids = resultats.reduce((t, r) => t + (r.octets || 0), 0);
+    etat.textContent = `${resultats.length} Release(s) conservée(s), `
+      + `${formaterOctets(poids)} de vidéos. Les artefacts s'ajoutent à ce total.`;
+  } catch {
+    etat.textContent = "État inconnu tant qu'aucune production n'a publié l'historique.";
+  }
+}
+
+async function lancerPurge() {
+  const avis = document.getElementById("purge-avis");
+  const bouton = document.getElementById("bouton-purger");
+  if (!window.confirm("Purger le stockage GitHub ?\n\nLes Releases les plus anciennes "
+      + "et leurs vidéos seront supprimées définitivement, ainsi que les artefacts "
+      + "trop vieux. Les plus récentes sont gardées.")) return;
+  bouton.disabled = true;
+  afficherAvis(avis, "info", "Purge demandée au runner…");
+  try {
+    const id = await dispatcherMaintenance({ action: "purge" });
+    const verdict = await attendreRun(id);
+    if (verdict !== "success") throw new Error(`Le run s'est terminé en « ${verdict} ».`);
+    afficherAvis(avis, "ok", "Purge terminée — le détail est dans le compte rendu du run.");
+    await chargerEtatStockage();
+  } catch (e) {
+    afficherAvis(avis, "erreur", explicationErreur(e));
+  } finally {
+    bouton.disabled = false;
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -1042,6 +1533,25 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("bouton-enregistrer").addEventListener("click", enregistrerFormulaire);
   document.getElementById("bouton-enregistrer-brut").addEventListener("click", enregistrerBrut);
+
+  document.querySelectorAll("[data-volet-resultat]").forEach((b) => {
+    b.addEventListener("click", () => choisirVoletResultat(b.dataset.voletResultat));
+  });
+  document.getElementById("bouton-rafraichir-anciens").addEventListener("click", chargerAnciens);
+
+  document.querySelectorAll("[data-bac]").forEach((b) => {
+    b.addEventListener("click", () => choisirBac(b.dataset.bac));
+  });
+  document.getElementById("bouton-rafraichir-banque").addEventListener("click", chargerBanque);
+  document.getElementById("bouton-recatalogue").addEventListener("click", recalculerCatalogue);
+  document.getElementById("bouton-ouvrir-ajout").addEventListener("click", () => {
+    document.getElementById("carte-ajout").classList.remove("masque");
+  });
+  document.getElementById("bouton-annuler-ajout").addEventListener("click", () => {
+    document.getElementById("carte-ajout").classList.add("masque");
+  });
+  document.getElementById("bouton-envoyer-ajout").addEventListener("click", envoyerAjout);
+  document.getElementById("bouton-purger").addEventListener("click", lancerPurge);
 
   document.getElementById("bouton-enregistrer-pat").addEventListener("click", enregistrerPat);
   document.getElementById("bouton-tester-pat").addEventListener("click", testerPat);
