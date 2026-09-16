@@ -316,3 +316,7 @@ code.mono {
   nav.bas button { font-size: 10px; padding-left: 2px; padding-right: 2px; }
   nav.bas button .pictogramme { font-size: 18px; }
 }
+
+/* Écoute d'un extrait de voix, sous le menu. */
+.ecoute-voix { margin-top: 8px; gap: 10px; align-items: center; }
+.ecoute-voix audio { display: none; }

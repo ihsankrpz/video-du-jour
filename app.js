@@ -93,8 +93,38 @@ const SCHEMA = {
         aide: "Sur chaque vidéo, avant les hashtags de niche que le modèle ajoute." },
       { cle: "ambiances_musique", type: "liste-inline", libelle: "Ambiances musicales",
         aide: "EN ANGLAIS. Départagent les morceaux de la banque en mode auto." },
-      { cle: "voix_tts", type: "texte", libelle: "Voix",
-        aide: "Nom ou identifiant ElevenLabs. Celle du thème prime sur celle des réglages." },
+      { cle: "voix_tts", type: "choix", libelle: "Voix off",
+        // [identifiant, libellé, groupe, extrait]. Voix françaises NATIVES de la
+        // bibliothèque ElevenLabs, utilisables par identifiant sans les ajouter au
+        // compte — chacune vérifiée par une synthèse réelle. L'extrait est celui
+        // de la voix elle-même : écouté sans consommer aucun caractère.
+        options: [
+          ["AfbuxQ9DVtS4azaxN1W7", "Léo — conteur vif et rassurant (par défaut)", "Conteurs dynamiques — pour TikTok",
+           "https://storage.googleapis.com/eleven-public-prod/database/workspace/0c997c49a0d74f83bef0a9d942b92f0f/voices/AfbuxQ9DVtS4azaxN1W7/RdF3GH356ehVu2eylw45.mp3"],
+          ["hv6gVog5LgtIUX88Nmq8", "Tristan — jeune conteur, rythme rapide", "Conteurs dynamiques — pour TikTok",
+           "https://storage.googleapis.com/eleven-public-prod/custom/voices/hv6gVog5LgtIUX88Nmq8/tx8rwfCue7TqWMKmoWLv.mp3"],
+          ["t8BrjWUT5Z23DLLBzbuY", "Sarah — féminine, très expressive", "Conteurs dynamiques — pour TikTok",
+           "https://storage.googleapis.com/eleven-public-prod/database/user/NnZ1eXhNpTYqF1jmlswPUrr9U4v2/voices/t8BrjWUT5Z23DLLBzbuY/Li9DboPs3GZTOiCSBXL4.mp3"],
+          ["O31r762Gb3WFygrEOGh0", "Victoria — féminine, ton créatrice de contenu", "Conteurs dynamiques — pour TikTok",
+           "https://storage.googleapis.com/eleven-public-prod/database/workspace/8883bfc00193440ba374c3ecd71610b5/voices/O31r762Gb3WFygrEOGh0/x79aDNW4Q3qgJKq1svTL.mp3"],
+          ["aQROLel5sQbj1vuIVi6B", "Nicolas — narrateur documentaire de référence", "Documentaire et récit",
+           "https://storage.googleapis.com/eleven-public-prod/database/workspace/7593eab373974d1db7d45255c5986d46/voices/aQROLel5sQbj1vuIVi6B/shwzqRrR51OISZWUl7EN.mp3"],
+          ["AmMsHJaCw4BtwV3KoUXF", "Nicolas Petit — ton journaliste, enquête", "Documentaire et récit",
+           "https://storage.googleapis.com/eleven-public-prod/database/workspace/6e0a5e48523a4ace847294f69a35dad4/voices/AmMsHJaCw4BtwV3KoUXF/ZbTESeOraWjGeT4n62PH.mp3"],
+          ["fnoOtHjtLbYs6mOpUSdr", "Julien — narrateur naturel et posé", "Documentaire et récit",
+           "https://storage.googleapis.com/eleven-public-prod/custom/voices/fnoOtHjtLbYs6mOpUSdr/g9CFE20kau0M5tJoKFRR.mp3"],
+          ["Qrl71rx6Yg8RvyPYRGCQ", "Guillaume — chaleureux, pédagogue", "Documentaire et récit",
+           "https://storage.googleapis.com/eleven-public-prod/custom/voices/Qrl71rx6Yg8RvyPYRGCQ/buzH27F7AdN9DzU1N55C.mp3"],
+          ["txtf1EDouKke753vN8SL", "Jeanne — narratrice douce", "Documentaire et récit",
+           "https://storage.googleapis.com/eleven-public-prod/custom/voices/txtf1EDouKke753vN8SL/KncK9phzELKxzmXlZhBV.mp3"],
+          ["a5n9pJUnAhX4fn7lx3uo", "Martin — grave et solennel (guerres, rois, drames)", "Ambiances",
+           "https://storage.googleapis.com/eleven-public-prod/custom/voices/a5n9pJUnAhX4fn7lx3uo/I5TRksrWlXu6l80nTPu2.mp3"],
+          ["cEw6Vx4RDAldKYxwALFW", "Clément — chuchoté (mystères, légendes)", "Ambiances",
+           "https://storage.googleapis.com/eleven-public-prod/database/user/0U3nhzLV4YbWkl2H0QAWDSVj3ws1/voices/cEw6Vx4RDAldKYxwALFW/zXozDiClDToG0JuFxwrj.mp3"],
+          ["h5FvD7dtq6DdnVBPv8Ii", "Max — calme, livre audio (ancienne voix)", "Ambiances",
+           "https://storage.googleapis.com/eleven-public-prod/database/workspace/37f35ef49a2546cb83a39fe927c44058/voices/h5FvD7dtq6DdnVBPv8Ii/b8e028e5-8330-4ab3-9480-cfd4cef82f22.mp3"],
+        ],
+        aide: "Voix françaises natives, classées par usage. « Écouter » joue l'extrait officiel de la voix, sans consommer de crédit — les réglages de la chaîne (plus expressifs, vitesse ×1,1) la rendront un peu plus vive." },
     ],
   },
   reglages: {
@@ -733,6 +763,61 @@ async function chargerFichierEditeur(nom) {
 
 function _idChamp(volet, cle) { return `champ-${volet}-${cle.replace(/\./g, "_")}`; }
 
+// Les extraits sont servis avec `Content-Type: text/plain` — vérifié : ce sont
+// pourtant de vrais MP3. Un lecteur audio de Safari sur iPhone peut refuser un
+// type pareil. Le serveur autorisant la lecture depuis n'importe quelle page, on
+// télécharge l'extrait À LA DEMANDE et on le rejoue ré-étiqueté `audio/mpeg`.
+function construireEcoute(select, champ) {
+  const zone = document.createElement("div");
+  zone.className = "ligne ecoute-voix";
+  const bouton = document.createElement("button");
+  bouton.type = "button";
+  bouton.className = "petit";
+  bouton.textContent = "▶ Écouter";
+  const lecteur = document.createElement("audio");
+  lecteur.preload = "none";
+  const etat = document.createElement("span");
+  etat.className = "detail";
+  let urlObjet = null;
+
+  const arreter = () => {
+    lecteur.pause();
+    bouton.textContent = "▶ Écouter";
+  };
+  select.addEventListener("change", arreter);
+  lecteur.addEventListener("ended", () => { bouton.textContent = "▶ Écouter"; });
+
+  bouton.addEventListener("click", async () => {
+    if (!lecteur.paused) { arreter(); return; }
+    const option = champ.options.find(([val]) => val === select.value);
+    if (!option || !option[3]) {
+      etat.textContent = "Pas d'extrait pour cette valeur.";
+      return;
+    }
+    bouton.disabled = true;
+    etat.textContent = "Chargement…";
+    try {
+      const reponse = await fetch(option[3]);
+      if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+      const donnees = await reponse.arrayBuffer();
+      if (urlObjet) URL.revokeObjectURL(urlObjet);
+      urlObjet = URL.createObjectURL(new Blob([donnees], { type: "audio/mpeg" }));
+      lecteur.src = urlObjet;
+      await lecteur.play();
+      bouton.textContent = "■ Arrêter";
+      etat.textContent = "";
+    } catch (e) {
+      etat.textContent = "Extrait indisponible (" + (e.message || e) + ").";
+    } finally {
+      bouton.disabled = false;
+    }
+  });
+  zone.appendChild(bouton);
+  zone.appendChild(etat);
+  zone.appendChild(lecteur);
+  return zone;
+}
+
 function construireChamp(volet, champ, valeur) {
   const bloc = document.createElement("div");
   const id = _idChamp(volet, champ.cle);
@@ -769,13 +854,41 @@ function construireChamp(volet, champ, valeur) {
   let controle;
   if (champ.type === "choix") {
     controle = document.createElement("select");
-    champ.options.forEach(([val, libelle]) => {
+    // Une valeur du fichier absente de la liste — écrite à la main, ou venue d'une
+    // version antérieure — est proposée TELLE QUELLE en tête. Sans cela, le menu
+    // afficherait la première option, et l'enregistrement suivant la remplacerait
+    // en silence par un choix que personne n'a fait.
+    const connue = champ.options.some(([val]) => val === String(valeur));
+    if (!connue) {
+      const o = document.createElement("option");
+      o.value = String(valeur);
+      o.textContent = `Valeur actuelle : ${valeur}`;
+      controle.appendChild(o);
+    }
+    const groupes = new Map();
+    champ.options.forEach(([val, libelle, groupe]) => {
       const o = document.createElement("option");
       o.value = val;
       o.textContent = libelle;
-      controle.appendChild(o);
+      if (groupe) {
+        if (!groupes.has(groupe)) {
+          const g = document.createElement("optgroup");
+          g.label = groupe;
+          groupes.set(groupe, g);
+          controle.appendChild(g);
+        }
+        groupes.get(groupe).appendChild(o);
+      } else {
+        controle.appendChild(o);
+      }
     });
     controle.value = String(valeur);
+    if (champ.options.some((o) => o[3])) {
+      controle.id = id;
+      bloc.appendChild(controle);
+      bloc.appendChild(construireEcoute(controle, champ));
+      return bloc;
+    }
   } else if (champ.type === "nombre") {
     controle = document.createElement("input");
     controle.type = "number";
