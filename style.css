@@ -320,3 +320,12 @@ code.mono {
 /* Écoute d'un extrait de voix, sous le menu. */
 .ecoute-voix { margin-top: 8px; gap: 10px; align-items: center; }
 .ecoute-voix audio { display: none; }
+
+/* Consommation par service. */
+.conso { padding: 10px 0; border-top: 1px solid var(--bordure); }
+.conso:first-of-type { border-top: none; }
+.conso-nom { font-weight: 600; font-size: 14px; }
+.conso-video { font-size: 13px; color: var(--texte-att); white-space: nowrap; }
+.jauge { height: 6px; border-radius: 999px; background: var(--fond-doux); margin: 6px 0 4px; overflow: hidden; }
+.jauge > div { height: 100%; background: var(--vert); border-radius: 999px; }
+.jauge > div.alerte { background: var(--orange); }

@@ -28,6 +28,10 @@ const OWNER = "ihsankrpz";
 const REPO = "Tiktok_Auto";
 const WORKFLOW_FILE = "video.yml";
 const WORKFLOW_MAINTENANCE = "maintenance.yml";
+// Sous ce reste, la jauge passe en couleur d'alerte : il est temps d'agir. Un
+// quart et non un cinquième : la banque Supabase, à 21,6 % restants (221 Mo), serait
+// sinon restée verte alors qu'elle se remplit d'une production à l'autre.
+const SEUIL_JAUGE_ALERTE = 0.25;
 const BRANCHE_RESULTAT = "dernier-resultat";
 // Publiée par le runner : catalogue de la banque distante (URLs signées, donc
 // consultable sans aucune clé) et historique des vidéos encore téléchargeables.
@@ -134,8 +138,8 @@ const SCHEMA = {
         aide: "Éteinte : AUCUN appel à ElevenLabs, piste silencieuse et repères de sous-titres calculés. La vidéo sort complète mais sans commentaire." },
       { cle: "modeles.script", type: "choix", libelle: "Modèle d'écriture",
         options: [
+          ["claude-sonnet-5", "Sonnet 5 — exact, ~0,13 à 0,15 $ le script (choisi)"],
           ["claude-opus-5", "Opus 5 — meilleure accroche, ~0,21 $ le script"],
-          ["claude-sonnet-5", "Sonnet 5 — exact aussi, ~0,13 $ le script"],
           ["claude-haiku-4-5", "Haiku 4.5 — ~0,03 $, a inventé des faits à l'essai"],
         ],
         aide: "Comparé sur le même prompt : le modèle économique a présenté une théorie du complot comme un fait historique." },
@@ -143,6 +147,9 @@ const SCHEMA = {
         aide: "4 à 7 mots au centre de la première image, sous-titres masqués pendant ce temps. Sans lui, l'accroche n'est qu'un petit sous-titre en bas." },
       { cle: "archives.ouverture_obligatoire", type: "bool", libelle: "Ouverture en archives seulement",
         aide: "La première image montre le vrai sujet, jamais du stock. Éteint, un paysage sans rapport redevient possible en ouverture — ce qui faisait partir 40 % des spectateurs." },
+      { cle: "consommation.anthropic_budget_mensuel_usd", type: "nombre",
+        libelle: "Budget mensuel Claude ($)",
+        aide: "L'API Anthropic ne publie pas le solde du compte : avec un budget, la consommation affichée après chaque vidéo indique ce qui reste dessus. 0 = non suivi." },
       { cle: "modeles.actif", type: "bool", libelle: "Écriture par le modèle",
         aide: "Éteinte : aucun appel à Anthropic. Le script vient alors de `script_manuel` dans config.yaml." },
       { cle: "mode_audio", type: "choix", libelle: "Musique",
@@ -635,7 +642,8 @@ async function chargerResultat() {
     <p class="detail" id="txt-theme" style="margin-top:8px"></p>
     <div id="zone-video" style="margin-top:14px"></div>
     <div id="zone-legende" style="margin-top:14px"></div>
-    <div id="zone-credits" style="margin-top:10px"></div>`;
+    <div id="zone-credits" style="margin-top:10px"></div>
+    <div id="zone-consommation" style="margin-top:14px"></div>`;
 
   if (enCours) {
     zone.querySelector("#avis-en-cours").textContent =
@@ -689,7 +697,56 @@ async function chargerResultat() {
       .addEventListener("click", () => copierPresse(credits, "copier-credits"));
   } catch { zoneCredits.innerHTML = ""; }
 
+  const zoneConsommation = zone.querySelector("#zone-consommation");
+  try {
+    const bilan = JSON.parse(await recupererFichierResultat("consommation.json"));
+    zoneConsommation.appendChild(construireConsommation(bilan));
+  } catch { zoneConsommation.innerHTML = ""; }
+
   marquerPointResultat(false);
+}
+
+// Ce que la vidéo a consommé chez chaque service, et ce qui reste. Une jauge
+// n'est dessinée que si la part restante est CONNUE : une barre pleine sur un
+// solde que le fournisseur ne publie pas mentirait.
+function construireConsommation(bilan) {
+  const carte = document.createElement("div");
+  const titre = document.createElement("h2");
+  titre.textContent = "Consommation de cette vidéo";
+  carte.appendChild(titre);
+  (bilan.services || []).forEach((s) => {
+    const bloc = document.createElement("div");
+    bloc.className = "conso";
+    const entete = document.createElement("div");
+    entete.className = "ligne espace";
+    const nom = document.createElement("span");
+    nom.className = "conso-nom";
+    nom.textContent = s.service;
+    const video = document.createElement("span");
+    video.className = "conso-video";
+    video.textContent = s.video;
+    entete.appendChild(nom);
+    entete.appendChild(video);
+    bloc.appendChild(entete);
+
+    if (typeof s.proportion_restante === "number") {
+      const jauge = document.createElement("div");
+      jauge.className = "jauge";
+      const plein = document.createElement("div");
+      const part = s.proportion_restante;
+      plein.style.width = `${Math.round(part * 100)}%`;
+      plein.className = part < SEUIL_JAUGE_ALERTE ? "alerte" : "";
+      jauge.appendChild(plein);
+      bloc.appendChild(jauge);
+    }
+    const detail = document.createElement("p");
+    detail.className = "detail";
+    detail.textContent = (s.mois && s.mois !== "—" ? `Ce mois-ci : ${s.mois} · ` : "")
+      + `Restant : ${s.restant}` + (s.exact === false ? " (estimation)" : "");
+    bloc.appendChild(detail);
+    carte.appendChild(bloc);
+  });
+  return carte;
 }
 
 async function telechargerVideo(nomFichier, onProgress) {
